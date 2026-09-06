@@ -358,6 +358,13 @@
     background:var(--field-bg);
     color-scheme:light;
   }
+  .field input[type=date]{
+    -webkit-appearance:none; appearance:none;
+    text-align:left; min-height:44px; box-sizing:border-box;
+  }
+  .field input[type=date]::-webkit-date-and-time-value{
+    text-align:left;
+  }
   .field textarea{min-height:70px; resize:vertical;}
   .chip-row{display:flex; flex-wrap:wrap; gap:7px;}
   .chip{
