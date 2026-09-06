@@ -861,8 +861,12 @@
         <input type="text" id="noteTitle" placeholder="예: 발리 가성비 리조트 브이로그">
       </div>
       <div class="field">
-        <label>배운 점</label>
-        <textarea id="noteLesson" placeholder="이번 릴스에서 배운 점을 적어보세요"></textarea>
+        <label>잘한 점</label>
+        <textarea id="noteGoodPoint" placeholder="이번 릴스에서 잘된 점, 계속 가져갈 점"></textarea>
+      </div>
+      <div class="field">
+        <label>못한 점</label>
+        <textarea id="noteBadPoint" placeholder="아쉬웠던 점, 다음엔 피할 점"></textarea>
       </div>
       <div class="field">
         <label>날짜</label>
@@ -1217,6 +1221,8 @@ https://m.blog.naver.com/dopamin33
   // pop an error toast on every keystroke. Now we detect that once and
   // fall back to an in-memory store so typing never errors out; data
   // just won't survive closing the app in that specific situation.
+  const IS_CLAUDE_ENV = !!window.storage;
+
   if(!window.storage){
     let memoryFallback = {};
     let useLocalStorage = true;
@@ -1334,14 +1340,14 @@ https://m.blog.naver.com/dopamin33
     }catch(e){ sponsorEntries = []; }
   }
   async function saveWithRetry(key, value, maxRetries){
-    maxRetries = maxRetries==null ? 2 : maxRetries;
+    maxRetries = maxRetries==null ? 4 : maxRetries;
     for(let attempt=0; attempt<=maxRetries; attempt++){
       try{
         const res = await window.storage.set(key, value);
         if(res) return true;
       }catch(e){ /* fall through and retry */ }
       if(attempt<maxRetries){
-        await new Promise(r=>setTimeout(r, 400*(attempt+1)));
+        await new Promise(r=>setTimeout(r, 500*(attempt+1)));
       }
     }
     return false;
@@ -1412,7 +1418,7 @@ https://m.blog.naver.com/dopamin33
     el.style.height = 'auto';
     el.style.height = el.scrollHeight + 'px';
   }
-  ['calStructure','calSubtitle','calCaption','insightHook','insightSubtitle','insightReason','noteLesson'].forEach(id=>{
+  ['calStructure','calSubtitle','calCaption','insightHook','insightSubtitle','insightReason','noteGoodPoint','noteBadPoint'].forEach(id=>{
     const el = $('#'+id);
     if(el){
       el.style.overflowY = 'hidden';
@@ -1606,13 +1612,14 @@ https://m.blog.naver.com/dopamin33
     editingNoteId = entry ? entry.id : null;
     $('#noteSheetTitle').textContent = entry ? '오답노트 수정' : '오답노트 작성';
     $('#noteTitle').value = entry ? entry.title : (prefillTitle || '');
-    $('#noteLesson').value = entry ? (entry.lesson||'') : '';
-    autoGrowTextarea($('#noteLesson'));
+    $('#noteGoodPoint').value = entry ? (entry.goodPoint||'') : '';
+    $('#noteBadPoint').value = entry ? (entry.badPoint || entry.lesson || '') : '';
     $('#noteDate').value = entry ? entry.date : (prefillDate || todayStr());
     const cancelBtn = $('#cancelNote');
     cancelBtn.textContent = entry ? '삭제' : '취소';
     cancelBtn.dataset.mode = entry ? 'delete' : 'cancel';
     $('#noteSheetOverlay').classList.add('open');
+    ['noteGoodPoint','noteBadPoint'].forEach(id=> autoGrowTextarea($('#'+id)));
   }
   $('#openNoteForm').addEventListener('click', ()=> openNoteForm(null, '', todayStr()));
   $('#cancelNote').addEventListener('click', async ()=>{
@@ -1643,7 +1650,8 @@ https://m.blog.naver.com/dopamin33
     savingNote = true;
     const fields = {
       title,
-      lesson: $('#noteLesson').value.trim(),
+      goodPoint: $('#noteGoodPoint').value.trim(),
+      badPoint: $('#noteBadPoint').value.trim(),
       date: $('#noteDate').value || todayStr()
     };
     if(editingNoteId){
@@ -1960,11 +1968,11 @@ https://m.blog.naver.com/dopamin33
     $('#calRefLink').value = entry ? (entry.refLink||'') : '';
     $('#calSubtitle').value = entry ? (entry.subtitle||'') : '';
     $('#calCaption').value = entry ? (entry.caption||'') : '';
-    ['calStructure','calSubtitle','calCaption'].forEach(id=> autoGrowTextarea($('#'+id)));
     const cancelBtn = $('#cancelCal');
     cancelBtn.textContent = entry ? '삭제' : '취소';
     cancelBtn.dataset.mode = entry ? 'delete' : 'cancel';
     $('#calSheetOverlay').classList.add('open');
+    ['calStructure','calSubtitle','calCaption'].forEach(id=> autoGrowTextarea($('#'+id)));
   }
 
   $('#cancelCal').addEventListener('click', ()=>{
@@ -2252,11 +2260,11 @@ https://m.blog.naver.com/dopamin33
     $('#insightHook').value = entry ? (entry.hook||'') : '';
     $('#insightSubtitle').value = entry ? (entry.subtitle||'') : '';
     $('#insightReason').value = entry ? (entry.reason||'') : '';
-    ['insightHook','insightSubtitle','insightReason'].forEach(id=> autoGrowTextarea($('#'+id)));
     const cancelBtn = $('#cancelInsight');
     cancelBtn.textContent = entry ? '삭제' : '취소';
     cancelBtn.dataset.mode = entry ? 'delete' : 'cancel';
     $('#insightSheetOverlay').classList.add('open');
+    ['insightHook','insightSubtitle','insightReason'].forEach(id=> autoGrowTextarea($('#'+id)));
   }
 
   $('#openInsightForm').addEventListener('click', ()=> openInsightForm(null));
@@ -2306,10 +2314,14 @@ https://m.blog.naver.com/dopamin33
     savingInsight = false;
   });
 
-  // ---------- AI 첨삭 (프롬프트 복사 방식) ----------
+  // ---------- AI 첨삭 ----------
   $('#aiEditBtn').addEventListener('click', async ()=>{
     const draft = $('#aiDraftInput').value.trim();
     if(!draft){ showToast('첨삭받을 내용을 붙여넣어주세요'); return; }
+    if(!IS_CLAUDE_ENV){
+      $('#aiEditResultWrap').innerHTML = `<div class="empty-hint">이 기능은 Claude 안에서 미리보기로 열었을 때만 작동해요.<br>지금은 배포된 사이트라 첨삭 결과를 바로 받을 수 없어요.</div>`;
+      return;
+    }
 
     const scriptSamples = getAllEntriesFlat()
       .filter(e=> e.status==='done' && (e.subtitle || e.caption || e.structure))
@@ -2326,15 +2338,15 @@ https://m.blog.naver.com/dopamin33
     const insightContext = insights.slice(0,8).map(it=>
       `- 훅: ${it.hook||'-'} / 자막구성: ${it.subtitle||'-'} / 터진 이유: ${it.reason||'-'}`
     ).join('\n');
-    const noteContext = notes.slice(0,8).map(n=>
-      `- ${n.title}: ${n.lesson||'-'}`
-    ).join('\n');
+    const goodPoints = notes.filter(n=>n.goodPoint).slice(0,8).map(n=> `- ${n.title}: ${n.goodPoint}`).join('\n');
+    const badPoints = notes.filter(n=>n.badPoint || n.lesson).slice(0,8).map(n=> `- ${n.title}: ${n.badPoint || n.lesson}`).join('\n');
 
-    const promptText = `당신은 릴스 콘텐츠 전문 에디터입니다. 아래 세 가지 자료를 반드시 모두 참고해서 사용자가 준 원본을 첨삭해주세요.
+    const promptText = `당신은 릴스 콘텐츠 전문 에디터입니다. 아래 네 가지 자료를 반드시 모두 참고해서 사용자가 준 원본을 첨삭해주세요.
 
 1. [내 말투 샘플] — 사용자가 실제로 썼던 과거 자막/캡션/구성이에요. 첨삭 결과의 말투와 톤은 반드시 이 샘플과 비슷하게, 사용자 본인 스타일 그대로 써주세요. 낯선 말투로 바꾸지 마세요.
 2. [잘 터진 인사이트] — 다른 릴스에서 통했던 훅·자막 패턴이에요. 여기서 통하는 구조를 가져와 적용해주세요.
-3. [과거 오답노트] — 과거에 실패했던 이유예요. 같은 실수가 이번 첨삭에서 반복되지 않도록 피해주세요.
+3. [오답노트 - 잘한 점] — 과거에 잘 됐던 부분이에요. 이런 패턴은 이번 첨삭에서도 계속 살려주세요.
+4. [오답노트 - 못한 점] — 과거에 아쉬웠던 부분이에요. 같은 실수가 이번 첨삭에서 반복되지 않도록 피해주세요.
 
 [내 말투 샘플]
 ${scriptSamples || '(아직 없음)'}
@@ -2342,13 +2354,16 @@ ${scriptSamples || '(아직 없음)'}
 [잘 터진 인사이트]
 ${insightContext || '(아직 없음)'}
 
-[과거 오답노트]
-${noteContext || '(아직 없음)'}
+[오답노트 - 잘한 점]
+${goodPoints || '(아직 없음)'}
+
+[오답노트 - 못한 점]
+${badPoints || '(아직 없음)'}
 
 [첨삭할 원본]
 ${draft}
 
-위 세 가지를 모두 반영해서 첨삭된 버전만 자연스럽게 다시 써주세요. 부연 설명 없이 결과물만 주세요.`;
+위 네 가지를 모두 반영해서 첨삭된 버전만 자연스럽게 다시 써주세요. 부연 설명 없이 결과물만 주세요.`;
 
     const resultWrap = $('#aiEditResultWrap');
     resultWrap.innerHTML = `<div class="ai-loading">✨ 말투·인사이트·오답노트를 참고해서 첨삭 중...</div>`;
