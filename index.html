@@ -360,10 +360,14 @@
   }
   .field input[type=date]{
     -webkit-appearance:none; appearance:none;
-    text-align:left; min-height:44px; box-sizing:border-box;
+    text-align:left; min-height:44px;
+    width:100% !important; margin:0 !important; box-sizing:border-box !important;
   }
   .field input[type=date]::-webkit-date-and-time-value{
     text-align:left;
+  }
+  .field input[type=date]::-webkit-calendar-picker-indicator{
+    margin-left:auto;
   }
   .field textarea{min-height:70px; resize:vertical;}
   .chip-row{display:flex; flex-wrap:wrap; gap:7px;}
@@ -564,6 +568,7 @@
   }
   .ai-draft-textarea.highlight-yellow{
     background:#FFFFFF; border:1.5px solid var(--pink-soft);
+    font-family:inherit; font-size:16px;
   }
   .ai-loading{font-size:13px; color:var(--ink-soft); text-align:center; padding:16px;}
   .ai-result-card{
@@ -874,6 +879,10 @@
       <div class="field">
         <label>못한 점</label>
         <textarea id="noteBadPoint" placeholder="아쉬웠던 점, 다음엔 피할 점"></textarea>
+      </div>
+      <div class="field">
+        <label>팔로워 유입</label>
+        <input type="text" id="noteFollowerGain" placeholder="예: 30, 1만">
       </div>
       <div class="field">
         <label>날짜</label>
@@ -1406,14 +1415,39 @@ https://m.blog.naver.com/dopamin33
   }
   let homeMemoSaveTimer = null;
   const homeMemoInputEl = $('#homeMemoInput');
+  const MEMO_BULLET = '• ';
   function autoGrowMemo(){
     if(!homeMemoInputEl) return;
     homeMemoInputEl.style.height = 'auto';
     homeMemoInputEl.style.height = homeMemoInputEl.scrollHeight + 'px';
   }
   if(homeMemoInputEl){
+    homeMemoInputEl.addEventListener('keydown', (e)=>{
+      if(e.key==='Enter'){
+        e.preventDefault();
+        const el = homeMemoInputEl;
+        const start = el.selectionStart, end = el.selectionEnd;
+        const insertion = '\n' + MEMO_BULLET;
+        el.value = el.value.slice(0, start) + insertion + el.value.slice(end);
+        const newPos = start + insertion.length;
+        el.selectionStart = el.selectionEnd = newPos;
+        homeMemo = el.value;
+        autoGrowMemo();
+        clearTimeout(homeMemoSaveTimer);
+        homeMemoSaveTimer = setTimeout(()=>{ saveHomeMemo(); }, 500);
+      }
+    });
     homeMemoInputEl.addEventListener('input', ()=>{
-      homeMemo = homeMemoInputEl.value;
+      const el = homeMemoInputEl;
+      // If this is the very first character typed into an empty memo,
+      // prepend the bullet after the keystroke has already landed —
+      // doing this on 'focus' (before typing) used to eat the first key.
+      if(el.value.length>0 && !el.value.startsWith(MEMO_BULLET)){
+        const pos = el.selectionStart;
+        el.value = MEMO_BULLET + el.value;
+        el.selectionStart = el.selectionEnd = pos + MEMO_BULLET.length;
+      }
+      homeMemo = el.value;
       autoGrowMemo();
       clearTimeout(homeMemoSaveTimer);
       homeMemoSaveTimer = setTimeout(()=>{ saveHomeMemo(); }, 500);
@@ -1530,11 +1564,20 @@ https://m.blog.naver.com/dopamin33
       list.innerHTML = `<div class="empty-hint">첫 오답노트를 작성해보세요.<br>기록이 쌓일수록 다음 릴스가 더 좋아져요 📈</div>`;
       return;
     }
-    const sorted = [...notes].sort((a,b)=> b.date.localeCompare(a.date));
+    const sorted = [...notes].sort((a,b)=>{
+      const av = parseViewsNumber(a.followerGain);
+      const bv = parseViewsNumber(b.followerGain);
+      if(av==null && bv==null) return b.date.localeCompare(a.date);
+      if(av==null) return 1;
+      if(bv==null) return -1;
+      if(bv!==av) return bv-av;
+      return b.date.localeCompare(a.date);
+    });
     list.innerHTML = sorted.map(n=>{
+      const gainHtml = n.followerGain ? `<span style="color:var(--pink); font-weight:800; font-size:11.5px;">+${escapeHtml(n.followerGain)}명 </span>` : '';
       return `<div class="note-card" data-id="${n.id}">
         <div class="note-top">
-          <div class="note-title">${escapeHtml(n.title)}</div>
+          <div class="note-title">${gainHtml}${escapeHtml(n.title)}</div>
           <div class="note-date">${n.date}</div>
         </div>
       </div>`;
@@ -1621,6 +1664,7 @@ https://m.blog.naver.com/dopamin33
     $('#noteTitle').value = entry ? entry.title : (prefillTitle || '');
     $('#noteGoodPoint').value = entry ? (entry.goodPoint||'') : '';
     $('#noteBadPoint').value = entry ? (entry.badPoint || entry.lesson || '') : '';
+    $('#noteFollowerGain').value = entry ? (entry.followerGain||'') : '';
     $('#noteDate').value = entry ? entry.date : (prefillDate || todayStr());
     const cancelBtn = $('#cancelNote');
     cancelBtn.textContent = entry ? '삭제' : '취소';
@@ -1650,7 +1694,7 @@ https://m.blog.naver.com/dopamin33
   });
   $('#noteSheetOverlay').addEventListener('click', (e)=>{ if(e.target.id==='noteSheetOverlay') $('#noteSheetOverlay').classList.remove('open'); });
   let savingNote = false;
-  $('#saveNote').addEventListener('click', async ()=>{
+  $('#saveNote').addEventListener('click', ()=>{
     if(savingNote) return;
     const title = $('#noteTitle').value.trim();
     if(!title){ showToast('릴스 제목을 입력해주세요'); return; }
@@ -1659,21 +1703,26 @@ https://m.blog.naver.com/dopamin33
       title,
       goodPoint: $('#noteGoodPoint').value.trim(),
       badPoint: $('#noteBadPoint').value.trim(),
+      followerGain: $('#noteFollowerGain').value.trim(),
       date: $('#noteDate').value || todayStr()
     };
+    const wasEditing = editingNoteId;
     if(editingNoteId){
       const idx = notes.findIndex(x=>x.id===editingNoteId);
       if(idx>-1){ notes[idx] = { ...notes[idx], ...fields }; }
     } else {
       notes.push({ id: uid(), tags: [], applied: false, ...fields });
     }
-    await saveNotes();
+    // Update the UI immediately — don't make the person wait for the
+    // network round-trip (which can retry for a few seconds) before
+    // they see their note land.
     $('#noteSheetOverlay').classList.remove('open');
     renderNotes();
     renderHome();
-    showToast(editingNoteId ? '오답노트를 수정했어요 ✍️' : '오답노트에 저장했어요 ✍️');
+    showToast(wasEditing ? '오답노트를 수정했어요 ✍️' : '오답노트에 저장했어요 ✍️');
     editingNoteId = null;
     savingNote = false;
+    saveNotes(); // fires in the background; shows its own toast only on failure
   });
 
   // ---------- Calendar render ----------
