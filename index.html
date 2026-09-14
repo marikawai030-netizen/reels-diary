@@ -458,6 +458,7 @@
   .cal-day.other{color:#E3C7D0;}
   .cal-day.today{font-weight:800;}
   .cal-day.selected{background:var(--pink-soft);}
+  .cal-day.uploaded .cal-day-num{background:var(--yellow-soft);}
   .cal-day-num{
     position:relative; display:flex; align-items:center; justify-content:center;
     width:26px; height:26px; border-radius:50%; border:none;
@@ -470,19 +471,10 @@
     background-size:contain; background-repeat:no-repeat;
     z-index:0;
   }
-  .cal-day-number-text{position:relative; z-index:2;}
   .cal-day.today .cal-day-number-text{
     color:#fff; font-weight:800;
   }
-  .cal-day.uploaded .cal-day-num{
-    background:var(--pink); border:none;
-  }
-  .cal-day.uploaded .cal-day-number-text{
-    color:#fff; font-weight:800;
-  }
-  .cal-day.today.uploaded .cal-day-num{
-    background:transparent;
-  }
+  .cal-day-number-text{position:relative; z-index:2;}
   .cal-day-tags{
     display:flex; flex-direction:column; align-items:center; gap:2px; margin-top:1px;
     width:100%; max-width:100%; min-height:16px; box-sizing:border-box; padding:0 2px; overflow:hidden;
@@ -968,6 +960,10 @@
       <div class="field">
         <label>캡션</label>
         <textarea id="calCaption" placeholder="업로드 캡션 초안"></textarea>
+      </div>
+      <div class="field">
+        <label>날짜</label>
+        <input type="date" id="calDate">
       </div>
     </div>
   </div>
@@ -1790,7 +1786,7 @@ https://m.blog.naver.com/dopamin33
       });
       deadlineSponsors.slice(0,3-daySponsors.slice(0,3).length).forEach((s,i)=>{
         const altClass = i%2===1 ? ' tag-alt' : '';
-        pillsHtml += `<span class="cal-day-tag tag-deadline${altClass}">${escapeHtml(truncateTagLabel(s.brand))}</span>`;
+        pillsHtml += `<span class="cal-day-tag tag-deadline${altClass}">마감일</span>`;
       });
       const tagsHtml = `<div class="cal-day-tags">${pillsHtml}</div>`;
       const classes = ['cal-day'];
@@ -1820,7 +1816,7 @@ https://m.blog.naver.com/dopamin33
     if(!selectedDay) return;
     const d = new Date(selectedDay+'T00:00:00');
     $('#dayPanelTitle').textContent = `${d.getMonth()+1}월 ${d.getDate()}일 (${DOW[d.getDay()]})`;
-    const entries = calEntries[selectedDay] || [];
+    const entries = (calEntries[selectedDay] || []).filter(e=>e.status!=='edit');
     const sponsorsForDay = sponsorEntries.filter(s=>s.date===selectedDay);
     const sponsorIdsShown = new Set(sponsorsForDay.map(s=>s.id));
     const deadlineSponsorsForDay = sponsorEntries.filter(s=>s.deadline===selectedDay && !sponsorIdsShown.has(s.id));
@@ -1976,7 +1972,7 @@ https://m.blog.naver.com/dopamin33
     e.target.value = digits ? Number(digits).toLocaleString() : '';
   });
   let savingSponsor = false;
-  $('#saveSponsor').addEventListener('click', async ()=>{
+  $('#saveSponsor').addEventListener('click', ()=>{
     if(savingSponsor) return;
     const brand = $('#sponsorBrand').value.trim();
     if(!brand){ showToast('협찬명을 입력해주세요'); return; }
@@ -1988,6 +1984,7 @@ https://m.blog.naver.com/dopamin33
       price: $('#sponsorPrice').value.trim(),
       uploaded: $('#sponsorUploaded').checked
     };
+    const wasEditing = editingSponsorId;
     if(editingSponsorId){
       const idx = sponsorEntries.findIndex(x=>x.id===editingSponsorId);
       if(idx>-1){
@@ -1996,12 +1993,12 @@ https://m.blog.naver.com/dopamin33
     } else {
       sponsorEntries.push({ id: uid(), date: selectedDay, ...fields });
     }
-    await saveSponsorEntries();
     $('#sponsorSheetOverlay').classList.remove('open');
     renderCalendar(); renderDayPanel(); renderMonthlySponsorTotal();
-    showToast(editingSponsorId ? '체험단 정보를 수정했어요 🏷️' : '체험단을 추가했어요 🏷️');
+    showToast(wasEditing ? '체험단 정보를 수정했어요 🏷️' : '체험단을 추가했어요 🏷️');
     editingSponsorId = null;
     savingSponsor = false;
+    saveSponsorEntries(); // background save
   });
 
   $('#prevMonth').addEventListener('click', ()=>{
@@ -2024,6 +2021,7 @@ https://m.blog.naver.com/dopamin33
     $('#calRefLink').value = entry ? (entry.refLink||'') : '';
     $('#calSubtitle').value = entry ? (entry.subtitle||'') : '';
     $('#calCaption').value = entry ? (entry.caption||'') : '';
+    $('#calDate').value = date;
     const cancelBtn = $('#cancelCal');
     cancelBtn.textContent = entry ? '삭제' : '취소';
     cancelBtn.dataset.mode = entry ? 'delete' : 'cancel';
@@ -2058,7 +2056,9 @@ https://m.blog.naver.com/dopamin33
     const title = $('#calTitle').value.trim();
     if(!title){ showToast('제목을 입력해주세요'); return; }
     savingCalEntry = true;
-    if(!calEntries[selectedDay]) calEntries[selectedDay] = [];
+    const originalDate = selectedDay;
+    const targetDate = $('#calDate').value || selectedDay;
+    if(!calEntries[targetDate]) calEntries[targetDate] = [];
     const newStatus = currentEditStatus;
     const fields = {
       title,
@@ -2069,28 +2069,45 @@ https://m.blog.naver.com/dopamin33
       caption: $('#calCaption').value.trim()
     };
     let prevStatus = null;
+    let moved = false;
     if(editingEntryId){
-      const idx = calEntries[selectedDay].findIndex(x=>x.id===editingEntryId);
-      if(idx>-1){
-        prevStatus = calEntries[selectedDay][idx].status;
-        calEntries[selectedDay][idx] = { ...calEntries[selectedDay][idx], ...fields };
+      if(targetDate!==originalDate){
+        // Moving to a different date: remove from the old date, add to the new one.
+        const oldIdx = (calEntries[originalDate]||[]).findIndex(x=>x.id===editingEntryId);
+        if(oldIdx>-1){
+          const oldEntry = calEntries[originalDate][oldIdx];
+          prevStatus = oldEntry.status;
+          calEntries[originalDate].splice(oldIdx, 1);
+          if(!calEntries[originalDate].length) delete calEntries[originalDate];
+          calEntries[targetDate].push({ ...oldEntry, ...fields });
+          moved = true;
+        }
+      } else {
+        const idx = calEntries[targetDate].findIndex(x=>x.id===editingEntryId);
+        if(idx>-1){
+          prevStatus = calEntries[targetDate][idx].status;
+          calEntries[targetDate][idx] = { ...calEntries[targetDate][idx], ...fields };
+        }
       }
     } else {
-      calEntries[selectedDay].push({ id: uid(), ...fields });
+      calEntries[targetDate].push({ id: uid(), ...fields });
     }
-    await saveCalEntries();
+    selectedDay = targetDate;
     $('#calSheetOverlay').classList.remove('open');
     renderCalendar(); renderDayPanel(); renderHome(); renderKanbanBoard(); renderUploadedReelsChecklist(); renderUploadedReelsChecklistInsight();
 
     if(newStatus==='done' && prevStatus!=='done'){
-      await autoCreateNoteIfMissing(title, selectedDay);
+      autoCreateNoteIfMissing(title, targetDate);
       showToast('업로드완료! 오답노트에 추가했어요 ✍️');
       goToNotesTab();
+    } else if(moved){
+      showToast('릴스를 다른 날짜로 옮겼어요 📅');
     } else {
       showToast(editingEntryId ? '릴스를 수정했어요 📌' : '릴스를 추가했어요 📌');
     }
     editingEntryId = null;
     savingCalEntry = false;
+    saveCalEntries(); // background save
   });
 
   // ---------- 보드(칸반) ----------
@@ -2344,7 +2361,7 @@ https://m.blog.naver.com/dopamin33
   });
   $('#insightSheetOverlay').addEventListener('click', (e)=>{ if(e.target.id==='insightSheetOverlay') $('#insightSheetOverlay').classList.remove('open'); });
   let savingInsight = false;
-  $('#saveInsight').addEventListener('click', async ()=>{
+  $('#saveInsight').addEventListener('click', ()=>{
     if(savingInsight) return;
     const source = $('#insightSource').value.trim();
     if(!source){ showToast('출처를 입력해주세요'); return; }
@@ -2356,18 +2373,19 @@ https://m.blog.naver.com/dopamin33
       subtitle: $('#insightSubtitle').value.trim(),
       reason: $('#insightReason').value.trim()
     };
+    const wasEditing = editingInsightId;
     if(editingInsightId){
       const idx = insights.findIndex(x=>x.id===editingInsightId);
       if(idx>-1){ insights[idx] = { ...insights[idx], ...fields }; }
     } else {
       insights.push({ id: uid(), date: todayStr(), ...fields });
     }
-    await saveInsights();
     $('#insightSheetOverlay').classList.remove('open');
     renderInsights();
-    showToast(editingInsightId ? '인사이트를 수정했어요 💡' : '인사이트를 저장했어요 💡');
+    showToast(wasEditing ? '인사이트를 수정했어요 💡' : '인사이트를 저장했어요 💡');
     editingInsightId = null;
     savingInsight = false;
+    saveInsights(); // background save
   });
 
   // ---------- AI 첨삭 ----------
@@ -2905,7 +2923,7 @@ ${draft}
   $('#cancelProposal').addEventListener('click', ()=> $('#proposalSheetOverlay').classList.remove('open'));
   $('#proposalSheetOverlay').addEventListener('click', (e)=>{ if(e.target.id==='proposalSheetOverlay') $('#proposalSheetOverlay').classList.remove('open'); });
   let savingProposal = false;
-  $('#saveProposal').addEventListener('click', async ()=>{
+  $('#saveProposal').addEventListener('click', ()=>{
     if(savingProposal) return;
     const hotelName = $('#proposalHotel').value.trim();
     if(!hotelName){ showToast('호텔명을 입력해주세요'); return; }
@@ -2915,6 +2933,7 @@ ${draft}
       roomType: $('#proposalRoom').value.trim(),
       memo: $('#proposalMemo').value.trim()
     };
+    const wasEditing = editingProposalId;
     if(editingProposalId){
       const idx = proposals.findIndex(x=>x.id===editingProposalId);
       if(idx>-1){
@@ -2923,13 +2942,13 @@ ${draft}
     } else {
       proposals.push({ id: uid(), date: todayStr(), contacted: false, result: 'none', ...fields });
     }
-    await saveProposals();
     $('#proposalSheetOverlay').classList.remove('open');
     renderProposals();
     renderMonthlySponsorTotal();
-    showToast(editingProposalId ? '호텔 정보를 수정했어요 🏨' : '호텔을 추가했어요 🏨');
+    showToast(wasEditing ? '호텔 정보를 수정했어요 🏨' : '호텔을 추가했어요 🏨');
     editingProposalId = null;
     savingProposal = false;
+    saveProposals(); // background save
   });
 
   $('#proposalHotelNameQuick').addEventListener('input', ()=> applyHotelSubstitution());
