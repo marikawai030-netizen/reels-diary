@@ -287,6 +287,29 @@
   }
   .note-top{display:flex; justify-content:space-between; align-items:flex-start; gap:8px;}
   .note-title{font-weight:700; font-size:14.5px;}
+  #notesList, #insightsList{display:flex; flex-direction:column; gap:10px;}
+  #notesList .note-card, #insightsList .insight-card{margin-bottom:0; padding:14px 16px; min-width:0;}
+  #notesList .note-title, #insightsList .insight-source{
+    font-size:16px; line-height:1.45; font-weight:700; color:var(--ink);
+    word-break:keep-all; overflow-wrap:anywhere;
+  }
+  .list-caption{font-size:12.5px; font-weight:700; color:var(--ink-soft); margin:2px 2px 0;}
+  .list-month{font-family:'Gowun Batang',serif; font-size:14px; color:var(--ink); margin:8px 2px 0;}
+  .gain-pill{
+    display:inline-block; margin-right:7px; padding:2px 9px; border-radius:999px; vertical-align:1px;
+    background:#FFE1EA; color:#B0305A; font-size:12.5px; font-weight:800; line-height:1.5;
+  }
+  .chip-line{display:flex; flex-wrap:wrap; gap:6px; margin-top:8px;}
+  .tag-chip{
+    padding:4px 10px; border-radius:10px; background:#FFF0F5; color:#7A3B55;
+    font-size:13px; font-weight:600; line-height:1.4; word-break:keep-all; overflow-wrap:anywhere;
+  }
+  #insightsList .insight-card .link-line{margin-top:10px;}
+  #insightsList .views-pill{background:#FFE1EA; color:#B0305A; font-size:13px; font-weight:700; padding:5px 12px; border-radius:999px; text-decoration:none;}
+  .more-btn{
+    width:100%; border:none; border-radius:14px; padding:13px; font-size:14px; font-weight:700;
+    background:var(--field-bg); color:var(--ink);
+  }
   .note-date{font-size:11px; color:var(--ink-soft); white-space:nowrap; margin-top:2px;}
   .note-meta{display:flex; flex-wrap:wrap; gap:6px; margin-top:8px;}
   .tag-pill{
@@ -458,7 +481,12 @@
   .cal-day.other{color:#E3C7D0;}
   .cal-day.today{font-weight:800;}
   .cal-day.selected{background:var(--pink-soft);}
-  .cal-day.uploaded .cal-day-num{background:var(--yellow-soft);}
+  .cal-day.uploaded .cal-day-num::before{
+    content:''; position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+    width:21px; height:21px; border-radius:50%; background:#FBEFD3; z-index:0;
+  }
+  /* on today's cell the heart takes over, so drop the circle there */
+  .cal-day.today.uploaded .cal-day-num::before{border-radius:0; background-color:transparent;}
   .cal-day-num{
     position:relative; display:flex; align-items:center; justify-content:center;
     width:26px; height:26px; border-radius:50%; border:none;
@@ -516,6 +544,15 @@
   .entry-actions{display:flex; align-items:center; gap:10px; flex-shrink:0;}
   .entry-edit, .sponsor-edit{border:none; background:none; color:var(--pink); font-size:12px; font-weight:700;}
   .entry-del, .sponsor-del{border:none; background:none; color:var(--ink-soft); font-size:12px;}
+  .entry-row{-webkit-user-select:none; user-select:none; -webkit-touch-callout:none;}
+  .sheet-overlay.drag-hide{opacity:0; pointer-events:none; background:transparent;}
+  .drag-ghost{
+    position:fixed; z-index:200; pointer-events:none; transform:translate(-50%,-130%);
+    background:var(--pink); color:#fff; font-weight:800; font-size:13px;
+    padding:8px 14px; border-radius:999px; box-shadow:var(--glow-pink); max-width:70vw;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+  .cal-day.drop-hover{background:var(--pink-soft); outline:2px dashed var(--pink); outline-offset:-2px;}
 
   .day-popup-sheet{position:relative; min-height:220px; padding-bottom:90px;}
   .day-fab-wrap{position:absolute; right:20px; bottom:20px; display:flex; flex-direction:column; align-items:flex-end;}
@@ -865,6 +902,10 @@
         <input type="text" id="noteTitle" placeholder="예: 발리 가성비 리조트 브이로그">
       </div>
       <div class="field">
+        <label>한줄평</label>
+        <input type="text" id="noteOneLine" placeholder="예: 훅은 좋았는데 영상미가 아쉬움">
+      </div>
+      <div class="field">
         <label>잘한 점</label>
         <textarea id="noteGoodPoint" placeholder="이번 릴스에서 잘된 점, 계속 가져갈 점"></textarea>
       </div>
@@ -925,6 +966,13 @@
         <input type="text" inputmode="numeric" id="sponsorPrice" placeholder="예: 50000">
       </div>
       <div class="field">
+        <label>메모</label>
+        <textarea id="sponsorMemo" placeholder="담당자, 연락 내용, 조건 등"></textarea>
+      </div>
+      <div class="field" style="display:flex; gap:22px; align-items:center;">
+        <label class="checkbox-field">
+          <input type="checkbox" id="sponsorContacted"> 연락 조율
+        </label>
         <label class="checkbox-field">
           <input type="checkbox" id="sponsorUploaded"> 업로드 완료
         </label>
@@ -981,6 +1029,10 @@
       <div class="field">
         <label>제목</label>
         <input type="text" id="insightSource" placeholder="예: 발리 가성비 여행">
+      </div>
+      <div class="field">
+        <label>한줄평</label>
+        <input type="text" id="insightOneLine" placeholder="예: 첫 3초 질문 훅이 강함">
       </div>
       <div class="field">
         <label>링크 (선택)</label>
@@ -1180,6 +1232,7 @@ https://m.blog.naver.com/dopamin33
   let editingEntryId = null; // id of the cal entry currently being edited, null = adding new
   let editingInsightId = null; // id of the insight currently being edited, null = adding new
   let editingNoteId = null; // id of the note currently being edited, null = adding new
+  let notesExpanded = false, insightsExpanded = false; // "더 보기" state for the two lists
   const $ = (sel) => document.querySelector(sel);
   const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
@@ -1455,7 +1508,7 @@ https://m.blog.naver.com/dopamin33
     el.style.height = 'auto';
     el.style.height = el.scrollHeight + 'px';
   }
-  ['calStructure','calSubtitle','calCaption','insightHook','insightSubtitle','insightReason','noteGoodPoint','noteBadPoint'].forEach(id=>{
+  ['calStructure','calSubtitle','calCaption','insightHook','insightSubtitle','insightReason','noteGoodPoint','noteBadPoint','sponsorMemo'].forEach(id=>{
     const el = $('#'+id);
     if(el){
       el.style.overflowY = 'hidden';
@@ -1502,6 +1555,16 @@ https://m.blog.naver.com/dopamin33
   // ---------- HOME render ----------
   function renderHome(){
     updateFollowerBadge();
+  }
+
+  function oneLineHtml(text){
+    const t = (text||'').trim();
+    if(!t) return '';
+    // "#정보형 #저장유도" -> two chips; plain text -> one "#..." chip
+    const tags = t.includes('#')
+      ? t.split('#').map(x=>x.trim()).filter(Boolean)
+      : [t];
+    return `<div class="chip-line">${tags.map(x=>`<span class="tag-chip">#${escapeHtml(x)}</span>`).join('')}</div>`;
   }
 
   function escapeHtml(str){
@@ -1569,15 +1632,20 @@ https://m.blog.naver.com/dopamin33
       if(bv!==av) return bv-av;
       return b.date.localeCompare(a.date);
     });
-    list.innerHTML = sorted.map(n=>{
-      const gainHtml = n.followerGain ? `<span style="color:var(--pink); font-weight:800; font-size:11.5px;">+${escapeHtml(n.followerGain)}명 </span>` : '';
+    const LIMIT = 7;
+    const shown = notesExpanded ? sorted : sorted.slice(0, LIMIT);
+    const cards = shown.map(n=>{
+      const gainHtml = n.followerGain ? `<span class="gain-pill">+${escapeHtml(n.followerGain)}명</span>` : '';
       return `<div class="note-card" data-id="${n.id}">
-        <div class="note-top">
-          <div class="note-title">${gainHtml}${escapeHtml(n.title)}</div>
-          <div class="note-date">${n.date}</div>
-        </div>
+        <div class="note-title">${gainHtml}${escapeHtml(n.title)}</div>
+        ${oneLineHtml(n.oneLine)}
       </div>`;
     }).join('');
+    const moreBtn = (!notesExpanded && sorted.length>LIMIT)
+      ? `<button class="more-btn" id="notesMoreBtn">더 보기 (${sorted.length-LIMIT}개)</button>` : '';
+    list.innerHTML = `<div class="list-caption">팔로워 유입 많은 순 · 총 ${sorted.length}개</div>${cards}${moreBtn}`;
+    const mb = $('#notesMoreBtn');
+    if(mb) mb.addEventListener('click', ()=>{ notesExpanded = true; renderNotes(); });
 
     $$('#notesList .note-card').forEach(card=>{
       card.addEventListener('click', (e)=>{
@@ -1658,6 +1726,7 @@ https://m.blog.naver.com/dopamin33
     editingNoteId = entry ? entry.id : null;
     $('#noteSheetTitle').textContent = entry ? '오답노트 수정' : '오답노트 작성';
     $('#noteTitle').value = entry ? entry.title : (prefillTitle || '');
+    $('#noteOneLine').value = entry ? (entry.oneLine||'') : '';
     $('#noteGoodPoint').value = entry ? (entry.goodPoint||'') : '';
     $('#noteBadPoint').value = entry ? (entry.badPoint || entry.lesson || '') : '';
     $('#noteFollowerGain').value = entry ? (entry.followerGain||'') : '';
@@ -1697,6 +1766,7 @@ https://m.blog.naver.com/dopamin33
     savingNote = true;
     const fields = {
       title,
+      oneLine: $('#noteOneLine').value.trim(),
       goodPoint: $('#noteGoodPoint').value.trim(),
       badPoint: $('#noteBadPoint').value.trim(),
       followerGain: $('#noteFollowerGain').value.trim(),
@@ -1778,7 +1848,7 @@ https://m.blog.naver.com/dopamin33
       const key = ymd(c.date);
       const isUploaded = (calEntries[key]||[]).some(e=>e.status==='done');
       const daySponsors = sponsorEntries.filter(e=>e.date===key);
-      const deadlineSponsors = sponsorEntries.filter(e=>e.deadline===key);
+      const deadlineSponsors = sponsorEntries.filter(e=>e.deadline===key && !e.uploaded);
       let pillsHtml = '';
       daySponsors.slice(0,3).forEach((s,i)=>{
         const altClass = i%2===1 ? ' tag-alt' : '';
@@ -1819,7 +1889,7 @@ https://m.blog.naver.com/dopamin33
     const entries = (calEntries[selectedDay] || []).filter(e=>e.status!=='edit');
     const sponsorsForDay = sponsorEntries.filter(s=>s.date===selectedDay);
     const sponsorIdsShown = new Set(sponsorsForDay.map(s=>s.id));
-    const deadlineSponsorsForDay = sponsorEntries.filter(s=>s.deadline===selectedDay && !sponsorIdsShown.has(s.id));
+    const deadlineSponsorsForDay = sponsorEntries.filter(s=>s.deadline===selectedDay && !s.uploaded && !sponsorIdsShown.has(s.id));
     const box = $('#dayEntries');
     if(!entries.length && !sponsorsForDay.length && !deadlineSponsorsForDay.length){
       box.innerHTML = `<div style="font-size:12.5px; color:var(--ink-soft); padding:6px 0;">이 날짜엔 아직 일정이 없어요.</div>`;
@@ -1846,6 +1916,7 @@ https://m.blog.naver.com/dopamin33
         const bits = [];
         if(s.deadline) bits.push(`마감 ${formatMonthDay(s.deadline)}`);
         if(s.price) bits.push(escapeHtml(s.price));
+        if(s.contacted) bits.push('연락조율');
         if(s.uploaded) bits.push('업로드완료');
         return `<div class="entry-row" data-sponsor-id="${s.id}">
           <div class="entry-left">
@@ -1853,6 +1924,7 @@ https://m.blog.naver.com/dopamin33
             <div>
               <div class="entry-title">${escapeHtml(s.brand)}${s.site ? ' · '+escapeHtml(s.site) : ''}</div>
               <div class="entry-status">체험단${bits.length ? ' · '+bits.join(' · ') : ''}</div>
+              ${s.memo ? `<div class="entry-status" style="white-space:pre-wrap; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;">📝 ${escapeHtml(s.memo)}</div>` : ''}
             </div>
           </div>
           <div class="entry-actions">
@@ -1881,8 +1953,45 @@ https://m.blog.naver.com/dopamin33
         </div>`;
       }).join('');
       box.innerHTML = scheduleHtml + sponsorHtml + deadlineHtml;
+      // Long-press an item, then drag it onto a date in the calendar and let go.
+      function attachRowLongPress(row, type, id, label){
+        let timer = null, sx = 0, sy = 0;
+        row.dataset.longPressed = '0';
+        row.addEventListener('contextmenu', (e)=> e.preventDefault());
+        row.addEventListener('pointerdown', (e)=>{
+          if(e.target.closest('button, input, label')) return;
+          row.dataset.longPressed = '0';
+          sx = e.clientX; sy = e.clientY;
+          clearTimeout(timer);
+          timer = setTimeout(()=>{
+            row.dataset.longPressed = '1';
+            startItemDrag(type, id, label, sx, sy);
+          }, 450);
+        });
+        row.addEventListener('pointermove', (e)=>{
+          if(!dragState && Math.abs(e.clientX-sx)+Math.abs(e.clientY-sy) > 10) clearTimeout(timer);
+        });
+        const cancel = ()=> clearTimeout(timer);
+        row.addEventListener('pointerup', cancel);
+        row.addEventListener('pointerleave', cancel);
+        row.addEventListener('pointercancel', cancel);
+      }
+      entries.forEach(e=>{
+        const row = $(`#dayEntries .entry-row[data-id="${e.id}"]`);
+        if(row) attachRowLongPress(row, 'schedule', e.id, e.title);
+      });
+      sponsorsForDay.forEach(s=>{
+        const row = $(`#dayEntries .entry-row[data-sponsor-id="${s.id}"]`);
+        if(row) attachRowLongPress(row, 'sponsor', s.id, s.brand);
+      });
+      deadlineSponsorsForDay.forEach(s=>{
+        const row = $(`#dayEntries .entry-row[data-deadline-id="${s.id}"]`);
+        if(row) attachRowLongPress(row, 'deadline', s.id, s.brand);
+      });
+
       $$('#dayEntries .entry-row[data-id]').forEach(row=>{
         row.addEventListener('click', (e)=>{
+          if(row.dataset.longPressed==='1') return;
           if(e.target.classList.contains('entry-del') || e.target.classList.contains('entry-edit')) return;
           const entry = calEntries[selectedDay].find(x=>x.id===row.dataset.id);
           if(entry){ $('#dayPanelOverlay').classList.remove('open'); openCalForm(selectedDay, entry); }
@@ -1891,6 +2000,7 @@ https://m.blog.naver.com/dopamin33
       $$('#dayEntries .entry-edit').forEach(b=>{
         b.addEventListener('click', (e)=>{
           e.stopPropagation();
+          if(b.closest('.entry-row').dataset.longPressed==='1') return;
           const entry = calEntries[selectedDay].find(x=>x.id===b.dataset.id);
           if(entry){ $('#dayPanelOverlay').classList.remove('open'); openCalForm(selectedDay, entry); }
         });
@@ -1898,6 +2008,7 @@ https://m.blog.naver.com/dopamin33
       $$('#dayEntries .entry-del').forEach(b=>{
         b.addEventListener('click', async (e)=>{
           e.stopPropagation();
+          if(b.closest('.entry-row').dataset.longPressed==='1') return;
           calEntries[selectedDay] = calEntries[selectedDay].filter(x=>x.id!==b.dataset.id);
           if(!calEntries[selectedDay].length) delete calEntries[selectedDay];
           await saveCalEntries();
@@ -1906,6 +2017,7 @@ https://m.blog.naver.com/dopamin33
       });
       $$('#dayEntries .entry-row[data-sponsor-id]').forEach(row=>{
         row.addEventListener('click', (e)=>{
+          if(row.dataset.longPressed==='1') return;
           if(e.target.classList.contains('sponsor-del') || e.target.classList.contains('sponsor-edit')) return;
           const s = sponsorEntries.find(x=>x.id===row.dataset.sponsorId);
           if(s){ $('#dayPanelOverlay').classList.remove('open'); openSponsorForm(s); }
@@ -1928,18 +2040,20 @@ https://m.blog.naver.com/dopamin33
       });
       $$('#dayEntries .entry-row[data-deadline-id]').forEach(row=>{
         row.addEventListener('click', (e)=>{
+          if(row.dataset.longPressed==='1') return;
           if(e.target.classList.contains('sponsor-edit') || e.target.classList.contains('deadline-check')) return;
           const s = sponsorEntries.find(x=>x.id===row.dataset.deadlineId);
           if(s){ $('#dayPanelOverlay').classList.remove('open'); openSponsorForm(s); }
         });
       });
       $$('#dayEntries .deadline-check').forEach(cb=>{
-        cb.addEventListener('change', async ()=>{
+        cb.addEventListener('change', ()=>{
           const s = sponsorEntries.find(x=>x.id===cb.dataset.id);
           if(s){
             s.uploaded = cb.checked;
-            await saveSponsorEntries();
-            renderDayPanel();
+            renderCalendar(); renderDayPanel();
+            if(cb.checked) showToast('업로드 완료! 마감일에서 지웠어요 ✅');
+            saveSponsorEntries(); // background save
           }
         });
       });
@@ -1962,8 +2076,11 @@ https://m.blog.naver.com/dopamin33
     $('#sponsorSite').value = entry ? (entry.site||'') : '';
     $('#sponsorDeadline').value = entry ? (entry.deadline||'') : '';
     $('#sponsorPrice').value = entry ? (entry.price||'') : '';
+    $('#sponsorMemo').value = entry ? (entry.memo||'') : '';
+    $('#sponsorContacted').checked = entry ? !!entry.contacted : false;
     $('#sponsorUploaded').checked = entry ? !!entry.uploaded : false;
     $('#sponsorSheetOverlay').classList.add('open');
+    autoGrowTextarea($('#sponsorMemo'));
   }
   $('#cancelSponsor').addEventListener('click', ()=> $('#sponsorSheetOverlay').classList.remove('open'));
   $('#sponsorSheetOverlay').addEventListener('click', (e)=>{ if(e.target.id==='sponsorSheetOverlay') $('#sponsorSheetOverlay').classList.remove('open'); });
@@ -1977,21 +2094,25 @@ https://m.blog.naver.com/dopamin33
     const brand = $('#sponsorBrand').value.trim();
     if(!brand){ showToast('협찬명을 입력해주세요'); return; }
     savingSponsor = true;
+    const existing = editingSponsorId ? sponsorEntries.find(x=>x.id===editingSponsorId) : null;
+    const targetDate = existing ? existing.date : selectedDay;
     const fields = {
       brand,
       site: $('#sponsorSite').value.trim(),
       deadline: $('#sponsorDeadline').value,
       price: $('#sponsorPrice').value.trim(),
+      memo: $('#sponsorMemo').value.trim(),
+      contacted: $('#sponsorContacted').checked,
       uploaded: $('#sponsorUploaded').checked
     };
     const wasEditing = editingSponsorId;
     if(editingSponsorId){
       const idx = sponsorEntries.findIndex(x=>x.id===editingSponsorId);
       if(idx>-1){
-        sponsorEntries[idx] = { id: editingSponsorId, date: sponsorEntries[idx].date, ...fields };
+        sponsorEntries[idx] = { id: editingSponsorId, date: targetDate, ...fields };
       }
     } else {
-      sponsorEntries.push({ id: uid(), date: selectedDay, ...fields });
+      sponsorEntries.push({ id: uid(), date: targetDate, ...fields });
     }
     $('#sponsorSheetOverlay').classList.remove('open');
     renderCalendar(); renderDayPanel(); renderMonthlySponsorTotal();
@@ -2000,6 +2121,90 @@ https://m.blog.naver.com/dopamin33
     savingSponsor = false;
     saveSponsorEntries(); // background save
   });
+
+  // ---------- 항목 꾹 눌러서 달력 날짜로 옮기기 ----------
+  function moveItemToDate(type, id, targetDate){
+    if(type==='schedule'){
+      const oldDate = Object.keys(calEntries).find(d=> (calEntries[d]||[]).some(x=>x.id===id));
+      if(!oldDate || oldDate===targetDate) return false;
+      const idx = calEntries[oldDate].findIndex(x=>x.id===id);
+      const entry = calEntries[oldDate][idx];
+      calEntries[oldDate].splice(idx,1);
+      if(!calEntries[oldDate].length) delete calEntries[oldDate];
+      if(!calEntries[targetDate]) calEntries[targetDate] = [];
+      calEntries[targetDate].push(entry);
+      saveCalEntries(); // background save
+      return true;
+    }
+    const s = sponsorEntries.find(x=>x.id===id);
+    if(!s) return false;
+    if(type==='sponsor'){
+      if(s.date===targetDate) return false;
+      s.date = targetDate;
+    } else if(type==='deadline'){
+      if(s.deadline===targetDate) return false;
+      s.deadline = targetDate;
+    } else return false;
+    saveSponsorEntries(); // background save
+    return true;
+  }
+
+  let dragState = null, dragGhost = null, dragHoverCell = null;
+  document.addEventListener('touchmove', (e)=>{ if(dragState) e.preventDefault(); }, {passive:false});
+
+  function cellAt(x, y){
+    const el = document.elementFromPoint(x, y);
+    return el && el.closest ? el.closest('.cal-day') : null;
+  }
+  function positionGhost(x, y){
+    if(!dragGhost) return;
+    dragGhost.style.left = x+'px';
+    dragGhost.style.top = y+'px';
+  }
+  function startItemDrag(type, id, label, x, y){
+    dragState = { type, id };
+    dragGhost = document.createElement('div');
+    dragGhost.className = 'drag-ghost';
+    dragGhost.textContent = label;
+    document.body.appendChild(dragGhost);
+    positionGhost(x, y);
+    $('#dayPanelOverlay').classList.add('drag-hide'); // reveal the calendar underneath
+    showToast('옮길 날짜 위에서 손을 떼세요 📅');
+    document.addEventListener('pointermove', onItemDragMove);
+    document.addEventListener('pointerup', onItemDragEnd);
+    document.addEventListener('pointercancel', onItemDragEnd);
+  }
+  function onItemDragMove(e){
+    if(!dragState) return;
+    positionGhost(e.clientX, e.clientY);
+    const cell = cellAt(e.clientX, e.clientY);
+    if(cell!==dragHoverCell){
+      if(dragHoverCell) dragHoverCell.classList.remove('drop-hover');
+      dragHoverCell = cell;
+      if(cell) cell.classList.add('drop-hover');
+    }
+  }
+  function onItemDragEnd(e){
+    if(!dragState) return;
+    document.removeEventListener('pointermove', onItemDragMove);
+    document.removeEventListener('pointerup', onItemDragEnd);
+    document.removeEventListener('pointercancel', onItemDragEnd);
+    const cell = e.type==='pointerup' ? cellAt(e.clientX, e.clientY) : null;
+    const st = dragState;
+    dragState = null;
+    if(dragGhost){ dragGhost.remove(); dragGhost = null; }
+    if(dragHoverCell){ dragHoverCell.classList.remove('drop-hover'); dragHoverCell = null; }
+    $('#dayPanelOverlay').classList.remove('drag-hide');
+    if(cell){
+      const target = cell.dataset.date;
+      if(moveItemToDate(st.type, st.id, target)){
+        $('#dayPanelOverlay').classList.remove('open');
+        selectedDay = target;
+        showToast('옮겼어요 📅');
+      }
+    }
+    renderCalendar(); renderDayPanel(); renderHome(); renderKanbanBoard(); renderMonthlySponsorTotal();
+  }
 
   $('#prevMonth').addEventListener('click', ()=>{
     cursorDate.setMonth(cursorDate.getMonth()-1);
@@ -2305,16 +2510,28 @@ https://m.blog.naver.com/dopamin33
       return;
     }
     const sorted = [...insights].sort((a,b)=> b.date.localeCompare(a.date));
-    list.innerHTML = sorted.map(it=>{
-      const linkHtml = it.link ? `<a class="views-pill" href="${escapeHtml(ensureProtocol(it.link))}" target="_blank" rel="noopener" onclick="event.stopPropagation()">🔗 링크 열기</a>` : '';
-      return `<div class="insight-card" data-id="${it.id}">
-        <div class="insight-top">
-          <div class="insight-source">${escapeHtml(it.source)}</div>
-          <div class="note-date">${it.date}</div>
-        </div>
-        <div class="note-meta">${linkHtml}</div>
+    const LIMIT = 7;
+    const shown = insightsExpanded ? sorted : sorted.slice(0, LIMIT);
+    let lastMonth = '';
+    const cards = shown.map(it=>{
+      const month = (it.date||'').slice(0,7);
+      let head = '';
+      if(month && month!==lastMonth){
+        lastMonth = month;
+        head = `<div class="list-month">${month.slice(0,4)}년 ${parseInt(month.slice(5,7),10)}월</div>`;
+      }
+      const linkHtml = it.link ? `<div class="link-line"><a class="views-pill" href="${escapeHtml(ensureProtocol(it.link))}" target="_blank" rel="noopener" onclick="event.stopPropagation()">🔗 링크 열기</a></div>` : '';
+      return `${head}<div class="insight-card" data-id="${it.id}">
+        <div class="insight-source">${escapeHtml(it.source)}</div>
+        ${oneLineHtml(it.oneLine)}
+        ${linkHtml}
       </div>`;
     }).join('');
+    const moreBtn = (!insightsExpanded && sorted.length>LIMIT)
+      ? `<button class="more-btn" id="insightsMoreBtn">더 보기 (${sorted.length-LIMIT}개)</button>` : '';
+    list.innerHTML = `<div class="list-caption">최신순 · 총 ${sorted.length}개</div>${cards}${moreBtn}`;
+    const mb = $('#insightsMoreBtn');
+    if(mb) mb.addEventListener('click', ()=>{ insightsExpanded = true; renderInsights(); });
 
     $$('#insightsList .insight-card').forEach(card=>{
       card.addEventListener('click', (e)=>{
@@ -2329,6 +2546,7 @@ https://m.blog.naver.com/dopamin33
     editingInsightId = entry ? entry.id : null;
     $('#insightSheetTitle').textContent = entry ? '릴스 인사이트 수정' : '릴스 인사이트 추가';
     $('#insightSource').value = entry ? entry.source : (prefillSource || '');
+    $('#insightOneLine').value = entry ? (entry.oneLine||'') : '';
     $('#insightLink').value = entry ? (entry.link||'') : '';
     $('#insightHook').value = entry ? (entry.hook||'') : '';
     $('#insightSubtitle').value = entry ? (entry.subtitle||'') : '';
@@ -2368,6 +2586,7 @@ https://m.blog.naver.com/dopamin33
     savingInsight = true;
     const fields = {
       source,
+      oneLine: $('#insightOneLine').value.trim(),
       link: $('#insightLink').value.trim(),
       hook: $('#insightHook').value.trim(),
       subtitle: $('#insightSubtitle').value.trim(),
