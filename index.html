@@ -2611,10 +2611,6 @@ https://m.blog.naver.com/dopamin33
   $('#aiEditBtn').addEventListener('click', async ()=>{
     const draft = $('#aiDraftInput').value.trim();
     if(!draft){ showToast('첨삭받을 내용을 붙여넣어주세요'); return; }
-    if(!IS_CLAUDE_ENV){
-      $('#aiEditResultWrap').innerHTML = `<div class="empty-hint">이 기능은 Claude 안에서 미리보기로 열었을 때만 작동해요.<br>지금은 배포된 사이트라 첨삭 결과를 바로 받을 수 없어요.</div>`;
-      return;
-    }
 
     const scriptSamples = getAllEntriesFlat()
       .filter(e=> e.status==='done' && (e.subtitle || e.caption || e.structure))
@@ -2659,6 +2655,26 @@ ${draft}
 위 네 가지를 모두 반영해서 첨삭된 버전만 자연스럽게 다시 써주세요. 부연 설명 없이 결과물만 주세요.`;
 
     const resultWrap = $('#aiEditResultWrap');
+
+    // 배포된 사이트(GitHub Pages 등)에는 Claude로 가는 통로가 없어서, 직접 호출 대신
+    // 참고자료가 다 채워진 프롬프트를 복사해준다. Claude 앱/사이트에 붙여넣으면 끝.
+    if(!IS_CLAUDE_ENV){
+      try{
+        await navigator.clipboard.writeText(promptText);
+        resultWrap.innerHTML = `<div class="empty-hint">📋 복사했어요!<br>Claude 앱이나 사이트에 붙여넣으면, 내 말투·인사이트·오답노트가 반영된 첨삭 결과를 받을 수 있어요.</div>`;
+        showToast('첨삭용 프롬프트를 복사했어요 📋');
+      }catch(e){
+        resultWrap.innerHTML = `
+          <div class="ai-result-card">
+            <div class="ai-result-header">
+              <div class="ai-result-label">아래 내용을 길게 눌러 복사해서 Claude에 붙여넣어주세요</div>
+            </div>
+            <div class="ai-result-text">${escapeHtml(promptText)}</div>
+          </div>`;
+      }
+      return;
+    }
+
     resultWrap.innerHTML = `<div class="ai-loading">✨ 말투·인사이트·오답노트를 참고해서 첨삭 중...</div>`;
 
     try{
