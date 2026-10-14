@@ -1692,32 +1692,33 @@ https://m.blog.naver.com/dopamin33
       <span style="text-align:right;"><span class="cst-label">${m+1}월 협찬 수익</span>₩${monthTotal.toLocaleString()}원</span>`;
   }
 
-  // 목표 칸 자동 번호 (1. 2. 3.)
-  function numKeydown(e){
-    const ta=e.target; if(!ta.matches||!ta.matches('#goalBoard textarea, #goalInput')) return;
+  // 목표·브랜딩 칸 자동 글머리 (• )
+  const BUL_SEL='#goalBoard textarea, #goalInput, #brandColorInput, #brandBizInput';
+  function bulKeydown(e){
+    const ta=e.target; if(!ta.matches||!ta.matches(BUL_SEL)) return;
     if(e.key!=='Enter'||e.isComposing) return;
     const pos=ta.selectionStart, v=ta.value;
     const ls=v.lastIndexOf('\n',pos-1)+1;
     const line=v.slice(ls,pos);
-    const m=line.match(/^(\d+)\.\s(.*)$/);
+    const m=line.match(/^(•|\d+\.)\s(.*)$/);
     if(!m) return;
     e.preventDefault();
     if(!m[2].trim()){ ta.value=v.slice(0,ls)+v.slice(pos); ta.selectionStart=ta.selectionEnd=ls; }
-    else{ const ins='\n'+(parseInt(m[1],10)+1)+'. '; ta.value=v.slice(0,pos)+ins+v.slice(ta.selectionEnd); ta.selectionStart=ta.selectionEnd=pos+ins.length; }
+    else{ const mark = m[1]==='•' ? '•' : (parseInt(m[1],10)+1)+'.'; const ins='\n'+mark+' '; ta.value=v.slice(0,pos)+ins+v.slice(ta.selectionEnd); ta.selectionStart=ta.selectionEnd=pos+ins.length; }
     ta.dispatchEvent(new Event('input',{bubbles:true}));
   }
-  function numInput(e){
-    const ta=e.target; if(!ta.matches||!ta.matches('#goalBoard textarea, #goalInput')) return;
+  function bulInput(e){
+    const ta=e.target; if(!ta.matches||!ta.matches(BUL_SEL)) return;
     if(e.isComposing||e.inputType==='deleteContentBackward') return;
     const v=ta.value;
-    if(v && !/^\d+\.\s/.test(v) && !v.includes('\n')){
-      ta.value='1. '+v; ta.selectionStart=ta.selectionEnd=ta.value.length;
+    if(v && !/^(•|\d+\.)\s/.test(v) && !v.includes('\n')){
+      ta.value='• '+v; ta.selectionStart=ta.selectionEnd=ta.value.length;
       ta.dispatchEvent(new Event('input',{bubbles:true}));
     }
   }
-  document.addEventListener('keydown', numKeydown);
-  document.addEventListener('compositionend', e=>{ numInput({target:e.target,isComposing:false}); });
-  document.addEventListener('input', numInput);
+  document.addEventListener('keydown', bulKeydown);
+  document.addEventListener('compositionend', e=>{ bulInput({target:e.target,isComposing:false}); });
+  document.addEventListener('input', bulInput);
   let goalYear = new Date().getFullYear();
   function renderGoalBoard(scroll){
     const box=$('#goalBoard'); if(!box) return;
